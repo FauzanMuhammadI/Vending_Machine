@@ -48,7 +48,157 @@ class ShowImage(QMainWindow):
         self.bayar_btn.clicked.connect(self.bayar)
 
     # Metode untuk mendeteksi koin pada gambar
+    def deteksi_koin(self):
+        imagePath, _ = QFileDialog.getOpenFileName(self, 'Open File', 'DATASET_KOIN', 'Image files (*.jpg *.png *.jpeg)')
+        if imagePath:
+            self.Image = cv2.imread(imagePath)
+            cv2.imshow('Original', self.Image)
 
+        if self.Image is not None:
+            H, W = self.Image.shape[:2]
+            gray = np.zeros((H, W), np.uint8)
+            for i in range(H):
+                for j in range(W):
+                    gray[i, j] = np.clip(0.299 * self.Image[i, j, 0] +
+                                         0.587 * self.Image[i, j, 1] +
+                                         0.114 * self.Image[i, j, 2], 0, 255)
+
+            img = self.Image
+
+            # Otsu Tresholding
+            _, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+            cv2.imshow('Otsu', thresh)
+
+            # Dilasi
+            kernel = np.ones((3, 3), np.uint8)
+            sure_bg = cv2.dilate(thresh, kernel, iterations=3)
+            self.Image = sure_bg
+            cv2.imshow('Dilasi', sure_bg)
+
+            # Kontur
+            contours, hierarchy = cv2.findContours(sure_bg, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+
+            total_value = 0
+            for cnt in contours:
+                area = cv2.contourArea(cnt)
+                print(area)
+                perimeter = cv2.arcLength(cnt, True)
+                circularity = 4 * np.pi * (area / (perimeter ** 2))
+
+                if area > 500 and circularity > 0.7:
+                    if area < 16100:
+                        value = 100
+                    elif area < 17020:
+                        value = 1000
+                    elif area < 20000:
+                        value = 200
+                    else:
+                        value = 500
+
+                    total_value += value
+                    cv2.drawContours(img, [cnt], -1, (0, 255, 0), 2)
+                    self.Image = cv2.putText(img, str(value), (cnt.ravel()[0], cnt.ravel()[1]),
+                                             cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+
+            self.detected_value += total_value
+            formatted_total_value = f"{self.detected_value:,}".replace(',', '.')
+            self.textBrowser_2.setText(f"Rp. {formatted_total_value}\n")
+            cv2.imshow('Hasil', self.Image)
+
+    # Metode untuk mendeteksi uang kertas pada gambar
+    from PyQt5.QtWidgets import QFileDialog, QMessageBox
+    import cv2
+    import os
+
+    def deteksi_kertas(self):
+        imagePath, _ = QFileDialog.getOpenFileName(self, 'Open File', 'FOTO_UANG', 'Image files (*.jpg *.png *.jpeg)')
+        if imagePath:
+            self.Image = cv2.imread(imagePath)
+            cv2.imshow('Original', self.Image)
+
+        if self.Image is not None:
+            dataset_path = 'DATASET_UANG'
+            templates = {
+                1000: f'{dataset_path}/1RIBU/',
+                2000: f'{dataset_path}/2RIBU/',
+                5000: f'{dataset_path}/5RIBU/',
+                10000: f'{dataset_path}/10RIBU/',
+                20000: f'{dataset_path}/20RIBU/',
+                50000: f'{dataset_path}/50RIBU/',
+                75000: f'{dataset_path}/75RIBU/',
+                100000: f'{dataset_path}/100RIBU/'
+            }
+
+            gray_image = cv2.cvtColor(self.Image, cv2.COLOR_BGR2GRAY)
+
+            best_match = None
+            best_val = 0
+
+            for nominal, folder in templates.items():
+                for filename in os.listdir(folder):
+                    template_path = os.path.join(folder, filename)
+                    template = cv2.imread(template_path, 0)
+                    if template is None:
+                        continue
+
+                    result = cv2.matchTemplate(gray_image, template, cv2.TM_CCOEFF_NORMED)
+                    _, max_val, _, _ = cv2.minMaxLoc(result)
+
+                    if max_val > best_val:
+                        best_val = max_val
+                        best_match = nominal
+
+            if best_match is not None:
+                self.detected_value += best_match
+                formatted_total_value = f"{self.detected_value:,}".replace(',', '.')
+                self.textBrowser_2.setText(f"Rp. {formatted_total_value}\n")
+                print(f'Detected: Rp. {best_match}')
+            else:
+                self.textBrowser_2.setText("No match found")
+                QMessageBox.warning(self, 'Warning', 'UANG PALSU')
+                print('No match found')
+
+    # Metode untuk memperbarui daftar pembelian
+    def update_list_widget(self, item_name):
+        self.item_counts[item_name] += 1
+        item_text = f"{item_name} - {self.item_counts[item_name]}"
+        self.total_price += self.item_prices[item_name]
+
+        items = self.listWidget.findItems(item_name, QtCore.Qt.MatchStartsWith)
+        if items:
+            item = items[0]
+            item.setText(item_text)
+        else:
+            self.listWidget.addItem(item_text)
+
+        formatted_price = f"{self.total_price:,}".replace(',', '.')
+        self.textBrowser.setText(f"Rp. {formatted_price}")
+
+    # Metode untuk membeli Coca Cola
+    def colabeli(self):
+        if not self.textBrowser_2.toPlainText().strip():
+            msg = QMessageBox()
+            msg.setIcon(QMessageBox.Warning)
+            msg.setWindowTitle("Masukan Uang Terlebih Dahulu")
+            msg.setStyleSheet(
+                "QMessageBox { background-color: white; color: black; } QPushButton { background-color: blue; color: white; }")
+            msg.setText("Masukan uang terlebih dahulu sebelum membeli.")
+            msg.exec_()
+            return
+
+        self.update_list_widget("Coca Cola")
+
+    # Metode untuk membeli Sprite
+    def spritebeli(self):
+        if not self.textBrowser_2.toPlainText().strip():
+            msg = QMessageBox()
+            msg.setIcon(QMessageBox.Warning)
+            msg.setWindowTitle("Masukan Uang Terlebih Dahulu")
+            msg.setStyleSheet(
+                "QMessageBox { background-color: white; color: black; } QPushButton { background-color: blue; color: white; }")
+            msg.setText("Masukan uang terlebih dahulu sebelum membeli.")
+            msg.exec_()
+            return
 
         self.update_list_widget("Sprite")
 
@@ -122,6 +272,44 @@ class ShowImage(QMainWindow):
         self.detected_value = 0
 
     # Metode untuk proses pembayaran
+    def bayar(self):
+        saldo_text = self.textBrowser_2.toPlainText().strip().replace("Rp. ", "").replace(".", "")
+        total_text = self.textBrowser.toPlainText().strip().replace("Rp. ", "").replace(".", "")
+
+        if saldo_text and total_text:
+            saldo = int(saldo_text)
+            total = int(total_text)
+
+            confirmation_message = "Apakah Anda yakin ingin membeli?"
+            confirmation = QMessageBox.question(self, "Konfirmasi Pembelian", confirmation_message,
+                                                QMessageBox.Yes | QMessageBox.No)
+
+            if confirmation == QMessageBox.Yes:
+                if saldo >= total:
+                    new_saldo = saldo - total
+                    formatted_new_saldo = f"Rp. {new_saldo:,}".replace(',', '.')
+                    self.textBrowser_2.setText(formatted_new_saldo)
+                    self.reset_pesan()
+                    self.textBrowser_2.clear()
+                    self.detected_value = 0
+
+                    remaining_balance_message = f"Berhasil Membeli\nKembalian: {formatted_new_saldo}"
+                    msg = QMessageBox()
+                    msg.setIcon(QMessageBox.Information)
+                    msg.setWindowTitle("Pembayaran Berhasil")
+                    msg.setStyleSheet(
+                        "QMessageBox { background-color: white; color: black; } QPushButton { background-color: blue; color: white; }")
+                    msg.setText(remaining_balance_message)
+                    msg.exec_()
+                else:
+                    insufficient_balance_message = "Uang kamu tidak cukup untuk melakukan pembayaran."
+                    msg = QMessageBox()
+                    msg.setIcon(QMessageBox.Warning)
+                    msg.setWindowTitle("Uang Tidak Cukup")
+                    msg.setStyleSheet(
+                        "QMessageBox { background-color: white; color: black; } QPushButton { background-color: blue; color: white; }")
+                    msg.setText(insufficient_balance_message)
+                    msg.exec_()
 
 
 app = QtWidgets.QApplication(sys.argv)
