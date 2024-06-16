@@ -5,6 +5,7 @@ import os
 from PyQt5 import QtCore, QtWidgets
 from PyQt5.uic import loadUi
 from PyQt5.QtWidgets import *
+from skimage.metrics import structural_similarity
 
 class ShowImage(QMainWindow):
     def __init__(self):
@@ -105,11 +106,6 @@ class ShowImage(QMainWindow):
             self.textBrowser_2.setText(f"Rp. {formatted_total_value}\n")
             cv2.imshow('Hasil', self.Image)
 
-    # Metode untuk mendeteksi uang kertas pada gambar
-    from PyQt5.QtWidgets import QFileDialog, QMessageBox
-    import cv2
-    import os
-
     def deteksi_kertas(self):
         imagePath, _ = QFileDialog.getOpenFileName(self, 'Open File', 'FOTO_UANG', 'Image files (*.jpg *.png *.jpeg)')
         if imagePath:
@@ -149,14 +145,266 @@ class ShowImage(QMainWindow):
                         best_match = nominal
 
             if best_match is not None:
-                self.detected_value += best_match
-                formatted_total_value = f"{self.detected_value:,}".replace(',', '.')
-                self.textBrowser_2.setText(f"Rp. {formatted_total_value}\n")
-                print(f'Detected: Rp. {best_match}')
+                if best_match == 100000:
+                    self.ssim100()
+                elif best_match == 50000:
+                    self.ssim50()
+                elif best_match == 1000:
+                    self.ssim1()
+                elif best_match == 10000:
+                    self.ssim10()
+                else:
+                    self.detected_value += best_match
+                    formatted_total_value = f"{self.detected_value:,}".replace(',', '.')
+                    self.textBrowser_2.setText(f"Rp. {formatted_total_value}\n")
+                    print(f'Detected: Rp. {best_match}')
             else:
                 self.textBrowser_2.setText("No match found")
                 QMessageBox.warning(self, 'Warning', 'UANG PALSU')
                 print('No match found')
+
+    def ssim1(self):
+        H, W = self.Image.shape[:2]
+        gray = np.zeros((H, W), np.uint8)
+        for i in range(H):
+            for j in range(W):
+                gray[i, j] = np.clip(
+                    0.299 * self.Image[i, j, 0] + 0.587 * self.Image[i, j, 1] + 0.114 * self.Image[i, j, 2], 0, 255)
+        self.Image = gray
+
+        # Load the sample image and convert to grayscale
+        sample = cv2.imread('DATASET_UANG/1RIBU/16.jpg')
+        if sample is None:
+            raise ValueError("Sample image not found or unable to load.")
+        sample_gray = cv2.cvtColor(sample, cv2.COLOR_BGR2GRAY)
+        test = self.Image
+
+        # Compute SSIM between the sample and the test images
+        (score, diff) = structural_similarity(sample_gray, test, full=True)
+        print("SSIM score:", score)
+        diff = (diff * 255).astype("uint8")
+
+        # Threshold and find contours
+        thresh = cv2.threshold(diff, 0, 255, cv2.THRESH_BINARY_INV | cv2.THRESH_OTSU)[1]
+        contours = cv2.findContours(thresh.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        contours = contours[0] if len(contours) == 2 else contours[1]
+
+        mask = np.zeros(sample.shape, dtype='uint8')
+        filled_after = test.copy()
+
+        for c in contours:
+            area = cv2.contourArea(c)
+            if area > 40:
+                x, y, w, h = cv2.boundingRect(c)
+                cv2.rectangle(sample, (x, y), (x + w, y + h), (36, 255, 12), 2)
+                cv2.rectangle(test, (x, y), (x + w, y + h), (36, 255, 12), 2)
+                cv2.drawContours(mask, [c], 0, (0, 255, 0), -1)
+                cv2.drawContours(filled_after, [c], 0, (0, 255, 0), -1)
+
+        # Display images
+        cv2.imshow('sample', sample_gray)
+        cv2.imshow('citrapengujian', test)
+        cv2.imshow('perbedaan menggunakan negative filter', diff)
+        cv2.imshow("mask", mask)
+        cv2.imshow("filled after", filled_after)
+        self.Image = filled_after
+
+        cv2.imshow("Sample", sample)
+        cv2.imshow("Test", test)
+        cv2.imshow("Difference using negative filter", diff)
+
+        cv2.waitKey(0)
+
+        # Menampilkan pop up berdasarkan skor SSIM
+        if score < 0.95:
+            QMessageBox.warning(self, 'Peringatan', 'Uang yang diinputkan adalah palsu')
+        else:
+            self.detected_value += 1000
+            formatted_total_value = f"{self.detected_value:,}".replace(',', '.')
+            self.textBrowser_2.setText(f"Rp. {formatted_total_value}\n")
+            print(f'Detected: Rp. 1000')
+
+    def ssim5(self):
+        H, W = self.Image.shape[:2]
+        gray = np.zeros((H, W), np.uint8)
+        for i in range(H):
+            for j in range(W):
+                gray[i, j] = np.clip(
+                    0.299 * self.Image[i, j, 0] + 0.587 * self.Image[i, j, 1] + 0.114 * self.Image[i, j, 2], 0, 255)
+        self.Image = gray
+
+        # Load the sample image and convert to grayscale
+        sample = cv2.imread('DATASET_UANG/5RIBU/16.jpg')
+        if sample is None:
+            raise ValueError("Sample image not found or unable to load.")
+        sample_gray = cv2.cvtColor(sample, cv2.COLOR_BGR2GRAY)
+        test = self.Image
+
+        # Compute SSIM between the sample and the test images
+        (score, diff) = structural_similarity(sample_gray, test, full=True)
+        print("SSIM score:", score)
+        diff = (diff * 255).astype("uint8")
+
+        # Threshold and find contours
+        thresh = cv2.threshold(diff, 0, 255, cv2.THRESH_BINARY_INV | cv2.THRESH_OTSU)[1]
+        contours = cv2.findContours(thresh.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        contours = contours[0] if len(contours) == 2 else contours[1]
+
+        mask = np.zeros(sample.shape, dtype='uint8')
+        filled_after = test.copy()
+
+        for c in contours:
+            area = cv2.contourArea(c)
+            if area > 40:
+                x, y, w, h = cv2.boundingRect(c)
+                cv2.rectangle(sample, (x, y), (x + w, y + h), (36, 255, 12), 2)
+                cv2.rectangle(test, (x, y), (x + w, y + h), (36, 255, 12), 2)
+                cv2.drawContours(mask, [c], 0, (0, 255, 0), -1)
+                cv2.drawContours(filled_after, [c], 0, (0, 255, 0), -1)
+
+        # Display images
+        cv2.imshow('sample', sample_gray)
+        cv2.imshow('citrapengujian', test)
+        cv2.imshow('perbedaan menggunakan negative filter', diff)
+        cv2.imshow("mask", mask)
+        cv2.imshow("filled after", filled_after)
+        self.Image = filled_after
+
+        cv2.imshow("Sample", sample)
+        cv2.imshow("Test", test)
+        cv2.imshow("Difference using negative filter", diff)
+
+        cv2.waitKey(0)
+
+        # Menampilkan pop up berdasarkan skor SSIM
+        if score < 0.95:
+            QMessageBox.warning(self, 'Peringatan', 'Uang yang diinputkan adalah palsu')
+        else:
+            self.detected_value += 5000
+            formatted_total_value = f"{self.detected_value:,}".replace(',', '.')
+            self.textBrowser_2.setText(f"Rp. {formatted_total_value}\n")
+            print(f'Detected: Rp. 5000')
+    def ssim100(self):  # fungsi ssim 100%
+        H, W = self.Image.shape[:2]
+        gray = np.zeros((H, W), np.uint8)
+        for i in range(H):
+            for j in range(W):
+                gray[i, j] = np.clip(
+                    0.299 * self.Image[i, j, 0] + 0.587 * self.Image[i, j, 1] + 0.114 * self.Image[i, j, 2], 0, 255)
+        self.Image = gray
+
+        # Load the sample image and convert to grayscale
+        sample = cv2.imread('DATASET_UANG/100RIBU/16.jpg')
+        if sample is None:
+            raise ValueError("Sample image not found or unable to load.")
+        sample_gray = cv2.cvtColor(sample, cv2.COLOR_BGR2GRAY)
+        test = self.Image
+
+        # Compute SSIM between the sample and the test images
+        (score, diff) = structural_similarity(sample_gray, test, full=True)
+        print("SSIM score:", score)
+        diff = (diff * 255).astype("uint8")
+
+        # Threshold and find contours
+        thresh = cv2.threshold(diff, 0, 255, cv2.THRESH_BINARY_INV | cv2.THRESH_OTSU)[1]
+        contours = cv2.findContours(thresh.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        contours = contours[0] if len(contours) == 2 else contours[1]
+
+        mask = np.zeros(sample.shape, dtype='uint8')
+        filled_after = test.copy()
+
+        for c in contours:
+            area = cv2.contourArea(c)
+            if area > 40:
+                x, y, w, h = cv2.boundingRect(c)
+                cv2.rectangle(sample, (x, y), (x + w, y + h), (36, 255, 12), 2)
+                cv2.rectangle(test, (x, y), (x + w, y + h), (36, 255, 12), 2)
+                cv2.drawContours(mask, [c], 0, (0, 255, 0), -1)
+                cv2.drawContours(filled_after, [c], 0, (0, 255, 0), -1)
+
+        # Display images
+        cv2.imshow('sample', sample_gray)
+        cv2.imshow('citrapengujian', test)
+        cv2.imshow('perbedaan menggunakan negative filter', diff)
+        cv2.imshow("mask", mask)
+        cv2.imshow("filled after", filled_after)
+        self.Image = filled_after
+
+        cv2.imshow("Sample", sample)
+        cv2.imshow("Test", test)
+        cv2.imshow("Difference using negative filter", diff)
+
+        cv2.waitKey(0)
+
+        # Menampilkan pop up berdasarkan skor SSIM
+        if score < 0.97:
+            QMessageBox.warning(self, 'Peringatan', 'Uang yang diinputkan adalah palsu')
+        else:
+            self.detected_value += 100000
+            formatted_total_value = f"{self.detected_value:,}".replace(',', '.')
+            self.textBrowser_2.setText(f"Rp. {formatted_total_value}\n")
+            print(f'Detected: Rp. 100000')
+
+    def ssim50(self):
+        H, W = self.Image.shape[:2]
+        gray = np.zeros((H, W), np.uint8)
+        for i in range(H):
+            for j in range(W):
+                gray[i, j] = np.clip(
+                    0.299 * self.Image[i, j, 0] + 0.587 * self.Image[i, j, 1] + 0.114 * self.Image[i, j, 2], 0, 255)
+        self.Image = gray
+
+        # Load the sample image and convert to grayscale
+        sample = cv2.imread('DATASET_UANG/50RIBU/16.jpg')
+        if sample is None:
+            raise ValueError("Sample image not found or unable to load.")
+        sample_gray = cv2.cvtColor(sample, cv2.COLOR_BGR2GRAY)
+        test = self.Image
+
+        # Compute SSIM between the sample and the test images
+        (score, diff) = structural_similarity(sample_gray, test, full=True)
+        print("SSIM score:", score)
+        diff = (diff * 255).astype("uint8")
+
+        # Threshold and find contours
+        thresh = cv2.threshold(diff, 0, 255, cv2.THRESH_BINARY_INV | cv2.THRESH_OTSU)[1]
+        contours = cv2.findContours(thresh.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        contours = contours[0] if len(contours) == 2 else contours[1]
+
+        mask = np.zeros(sample.shape, dtype='uint8')
+        filled_after = test.copy()
+
+        for c in contours:
+            area = cv2.contourArea(c)
+            if area > 40:
+                x, y, w, h = cv2.boundingRect(c)
+                cv2.rectangle(sample, (x, y), (x + w, y + h), (36, 255, 12), 2)
+                cv2.rectangle(test, (x, y), (x + w, y + h), (36, 255, 12), 2)
+                cv2.drawContours(mask, [c], 0, (0, 255, 0), -1)
+                cv2.drawContours(filled_after, [c], 0, (0, 255, 0), -1)
+
+        # Display images
+        cv2.imshow('sample', sample_gray)
+        cv2.imshow('citrapengujian', test)
+        cv2.imshow('perbedaan menggunakan negative filter', diff)
+        cv2.imshow("mask", mask)
+        cv2.imshow("filled after", filled_after)
+        self.Image = filled_after
+
+        cv2.imshow("Sample", sample)
+        cv2.imshow("Test", test)
+        cv2.imshow("Difference using negative filter", diff)
+
+        cv2.waitKey(0)
+
+        # Menampilkan pop up berdasarkan skor SSIM
+        if score < 0.97:
+            QMessageBox.warning(self, 'Peringatan', 'Uang yang diinputkan adalah palsu')
+        else:
+            self.detected_value += 50000
+            formatted_total_value = f"{self.detected_value:,}".replace(',', '.')
+            self.textBrowser_2.setText(f"Rp. {formatted_total_value}\n")
+            print(f'Detected: Rp. 50000')
 
     # Metode untuk memperbarui daftar pembelian
     def update_list_widget(self, item_name):
